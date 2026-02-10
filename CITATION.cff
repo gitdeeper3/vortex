@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the following metadata"
+title: "Vortex Multi-Parameter Assessment Protocol for Tropical Cyclone Rapid Intensification"
+authors:
+
+· given-names: Samir
+  family-names: Baladi
+  email: gitdeeper@gmail.com
+  orcid: 0009-0003-8903-0029
+  affiliation: Independent Researcher
+  version: 1.0.0
+  date-released: 2026-02-10
+  license: MIT
+  repository-code: "https://gitlab.com/gitdeeper3/vortex"
+  url: "https://gitlab.com/gitdeeper3/vortex"
+  doi: 10.5281/zenodo.xxxxxxx
+  identifiers:
+· type: doi
+  value: 10.5281/zenodo.xxxxxxx
+· type: url
+  value: https://pypi.org/project/vortex/
+  keywords:
+· tropical-cyclones
+· rapid-intensification
+· meteorology
+· python
+· forecasting
+  abstract: "An operational research framework for predicting Rapid Intensification (RI) in tropical cyclones using an 8-parameter physical assessment protocol."

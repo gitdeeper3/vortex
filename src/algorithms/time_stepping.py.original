@@ -1,0 +1,593 @@
+"""
+Enhanced Time Stepping Module for RI Forecasting
+Improved physics, numerical stability, and operational realism
+"""
+import numpy as np
+from typing import Dict, List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
+
+class EnhancedTimeSteppingForecast:
+    def __init__(self, time_step_hours: float = 1.0, adaptive_step: bool = True):
+        self.dt = time_step_hours
+        self.adaptive_step = adaptive_step
+        self.forecast_horizon = 72  # maximum horizon in hours
+
+        # Coupling coefficients
+        self.alpha_base = 0.15
+        self.beta_shear = 0.08
+        self.gamma_cold_wake = 0.05
+
+        # Cold wake memory
+        self.cold_wake_memory = 0.0
+        self.memory_decay_base = 0.95
+
+        # Rate limits
+        self.limit_up_max = 25.0
+        self.limit_down_max = -15.0
+        
+        # Uncertainty bounds
+        self.max_uncertainty = 0.35  # Maximum 35% uncertainty
+        
+        # RI detection parameters
+        self.ri_threshold_kt = 30.0
+        self.ri_shear_threshold = 15.0
+        self.ri_mpi_margin_min = 20.0  # Minimum MPI margin for RI
+        
+        # Initialize state
+        self.reset_memory()
+
+    def reset_memory(self):
+        """Reset cold wake memory for new forecast"""
+        self.cold_wake_memory = 0.0
+
+    def forecast_intensity(self,
+                           initial_intensity_kt: float,
+                           mpi_trajectory: List[float],
+                           environmental_trends: Dict[str, List[float]],
+                           time_horizon_hours: int = 48) -> Dict:
+        """
+        Enhanced intensity forecast with all improvements
+        """
+        try:
+            self.reset_memory()
+            time_horizon_hours = min(time_horizon_hours, self.forecast_horizon)
+            n_steps = int(time_horizon_hours / self.dt)
+            time_points = np.arange(0, time_horizon_hours + self.dt, self.dt)
+
+            # State vector: intensity
+            V = np.zeros(len(time_points))
+            V[0] = initial_intensity_kt
+
+            # Prepare environmental arrays with enhanced interpolation
+            shear = self._prepare_array(environmental_trends.get('shear_kt', []), 
+                                       n_steps, 10.0, 0, 50)
+            ohc = self._prepare_array(environmental_trends.get('ohc_kj_cm2', []), 
+                                     n_steps, 60.0, 0, 120)
+            outflow_trend = self._prepare_array(environmental_trends.get('outflow_trend_c_per_h', []), 
+                                               n_steps, 0.0, -1, 1)
+            symmetry = self._prepare_array(environmental_trends.get('symmetry', []), 
+                                          n_steps, 0.5, 0.0, 1.0)
+            mpi = self._prepare_array(mpi_trajectory, n_steps, 100.0, 0, 250)
+
+            # Main integration loop
+            for i in range(1, len(time_points)):
+                V_current = V[i-1]
+                MPI_current = mpi[i-1]
+
+                # Current environmental conditions
+                shear_current = shear[i-1]
+                ohc_current = ohc[i-1]
+                symmetry_current = symmetry[i-1]
+                outflow_current = outflow_trend[i-1]
+
+                # Continuous symmetry suppression (smooth transition)
+                symmetry_factor = 0.6 + 0.4 * np.clip(symmetry_current, 0, 1)
+
+                # Smoothed MPI trend (3-point difference for stability)
+                mpi_trend = 0.0
+                if i > 2:
+                    mpi_trend = (mpi[i-1] - mpi[i-3]) / 2.0
+
+                # Calculate enhanced coupling coefficient
+                alpha = self._calculate_enhanced_coupling(
+                    symmetry_current, ohc_current, outflow_current,
+                    mpi_trend, V_current, MPI_current
+                )
+                alpha *= symmetry_factor  # Apply symmetry suppression
+
+                # Calculate intensity tendency with all physics
+                dV_dt = self._calculate_enhanced_tendency(
+                    V_current, MPI_current, alpha,
+                    shear_current, ohc_current, symmetry_current
+                )
+
+                # Intensity-dependent rate limits with soft sigmoid transition
+                limit_up = self.limit_up_max / (1 + np.exp((V_current - 150)/20))
+                limit_down = self.limit_down_max
+                dV_dt = np.clip(dV_dt, limit_down, limit_up)
+
+                # Force weakening if significantly above MPI (>8%)
+                if V_current > MPI_current * 1.08:
+                    dV_dt = min(dV_dt, -5.0)
+
+                # Rapid weakening under extreme conditions
+                if shear_current > 25.0 and ohc_current < 40.0:
+                    dV_dt -= 5.0
+
+                # Semi-implicit integration for stability
+                V_next = self._semi_implicit_step(
+                    V_current, MPI_current, alpha, dV_dt, self.dt
+                )
+                
+                # Apply physical bounds
+                V[i] = max(0.0, min(V_next, MPI_current))
+
+                # Update memory with adaptive decay
+                decay_factor = self.memory_decay_base * (1 - V_current / max(MPI_current, 1.0) * 0.5)
+                self.cold_wake_memory *= decay_factor
+                self._update_cold_wake_memory(V_current, ohc_current)
+
+            # Generate enhanced forecast products
+            forecast_summary = self._generate_enhanced_forecast(
+                time_points, V, mpi, shear, ohc
+            )
+            
+            ri_probabilities = self._calculate_enhanced_ri_probability(
+                V, time_points, mpi, shear
+            )
+
+            logger.info(f"Enhanced forecast completed: {initial_intensity_kt:.0f} -> "
+                       f"{V[-1]:.0f} kt over {time_horizon_hours}h")
+
+            return {
+                'time_points_hours': time_points.tolist(),
+                'intensity_forecast_kt': V.tolist(),
+                'mpi_trajectory_kt': mpi[:len(time_points)].tolist(),
+                'ri_probability_time_series': ri_probabilities,
+                'forecast_summary': forecast_summary,
+                'enhancements_applied': self._list_enhancements(),
+                'integration_parameters': {
+                    'time_step_hours': self.dt,
+                    'adaptive_step': self.adaptive_step,
+                    'ri_threshold_kt': self.ri_threshold_kt,
+                    'ri_shear_threshold': self.ri_shear_threshold,
+                    'ri_mpi_margin_min': self.ri_mpi_margin_min
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"Enhanced forecast error: {e}")
+            return self._get_fallback_forecast(initial_intensity_kt, time_horizon_hours)
+
+    def _calculate_enhanced_coupling(self, symmetry: float, ohc: float,
+                                    outflow: float, mpi_trend: float,
+                                    V_current: float, MPI_current: float) -> float:
+        """
+        Calculate enhanced ocean-atmosphere coupling coefficient
+        """
+        # Symmetry factor
+        symmetry_factor = 0.5 + symmetry  # 0.5 to 1.5
+
+        # OHC factor (saturates at high OHC)
+        ohc_factor = 0.5 + min(1.0, ohc / 80.0)  # 0.5 to 1.5
+
+        # Outflow trend factor
+        outflow_factor = 1.0
+        if outflow < -0.3:
+            outflow_factor = 1.2  # Strong cooling enhances coupling
+        elif outflow < -0.1:
+            outflow_factor = 1.1  # Moderate cooling
+        elif outflow > 0.3:
+            outflow_factor = 0.8  # Warming reduces coupling
+
+        # MPI trend factor (tanh for smooth bounded effect)
+        mpi_trend_factor = 1.0 + 0.3 * np.tanh(mpi_trend / 10.0)
+
+        # Intensity-dependent factor (reduces near MPI)
+        intensity_factor = 1.0 - 0.5 * (V_current / max(MPI_current, 1.0))
+
+        # Combined coupling coefficient
+        alpha = (self.alpha_base * symmetry_factor * ohc_factor * 
+                outflow_factor * mpi_trend_factor * intensity_factor)
+
+        # Physical bounds
+        alpha = np.clip(alpha, 0.01, 0.3)
+        
+        return alpha
+
+    def _calculate_enhanced_tendency(self, V: float, MPI: float,
+                                    alpha: float, shear: float,
+                                    ohc: float, symmetry: float) -> float:
+        """
+        Calculate enhanced intensity tendency
+        """
+        # Thermodynamic relaxation with realistic MPI approach
+        relaxation = alpha * (MPI - V) * (1 - V / max(MPI, 1.0))
+
+        # Shear inhibition (proportional to intensity relative to MPI)
+        shear_inhibition = self.beta_shear * shear * (V / max(MPI, 20.0))
+
+        # Current cold wake effect
+        cold_wake_base = self.gamma_cold_wake * max(0, 60 - ohc) / 60 * (V / 100.0)
+
+        # Memory effect (cumulative past cold wake)
+        cold_wake_memory = 0.02 * self.cold_wake_memory
+
+        # Total tendency
+        dV_dt = relaxation - shear_inhibition - (cold_wake_base + cold_wake_memory)
+        
+        return dV_dt
+
+    def _semi_implicit_step(self, V_current: float, MPI_current: float,
+                           alpha: float, dV_dt_explicit: float,
+                           dt: float) -> float:
+        """
+        Semi-implicit Euler integration for stability
+        """
+        # Implicit solution for relaxation term
+        if alpha > 0:
+            V_implicit = (V_current + alpha * MPI_current * dt) / (1 + alpha * dt)
+        else:
+            V_implicit = V_current
+
+        # Add explicit tendencies (shear, cold wake)
+        V_next = V_implicit + (dV_dt_explicit - alpha * (MPI_current - V_current)) * dt
+        
+        return V_next
+
+    def _update_cold_wake_memory(self, V_current: float, ohc_current: float):
+        """
+        Update cold wake memory based on current conditions
+        """
+        # Memory increment depends on intensity and OHC depletion
+        mem_increment = (V_current / 150.0) * self.dt * (1 - ohc_current / 100.0)
+        
+        # Add to memory with upper bound
+        self.cold_wake_memory = min(self.cold_wake_memory + mem_increment, 10.0)
+
+    def _prepare_array(self, data: List[float], target_length: int,
+                      default: float = 0.0, min_val: Optional[float] = None,
+                      max_val: Optional[float] = None) -> np.ndarray:
+        """
+        Prepare array with enhanced interpolation and bounds
+        """
+        if not data:
+            # No data: fill with default
+            arr = np.full(target_length, default)
+        elif len(data) >= target_length:
+            # Enough data: truncate
+            arr = np.array(data[:target_length])
+        else:
+            # Insufficient data: linear extrapolation
+            arr = np.zeros(target_length)
+            arr[:len(data)] = data
+            
+            if len(data) > 1:
+                # Linear extrapolation based on last trend
+                slope = data[-1] - data[-2]
+                arr[len(data):] = data[-1] + slope * np.arange(1, target_length - len(data) + 1)
+            else:
+                # Single data point: constant extrapolation
+                arr[len(data):] = data[-1]
+        
+        # Apply physical bounds
+        if min_val is not None:
+            arr = np.maximum(arr, min_val)
+        if max_val is not None:
+            arr = np.minimum(arr, max_val)
+        
+        return arr
+
+    def _generate_enhanced_forecast(self, time_points: np.ndarray,
+                                   intensity_forecast: np.ndarray,
+                                   mpi_trajectory: np.ndarray,
+                                   shear_trajectory: np.ndarray,
+                                   ohc_trajectory: np.ndarray) -> Dict[str, any]:
+        """
+        Generate enhanced forecast with uncertainty quantification
+        """
+        upper_bound = np.zeros_like(intensity_forecast)
+        lower_bound = np.zeros_like(intensity_forecast)
+        
+        for i in range(len(time_points)):
+            base = intensity_forecast[i]
+            mpi = mpi_trajectory[i]
+            shear = shear_trajectory[i]
+            ohc = ohc_trajectory[i]
+            
+            # Uncertainty components
+            mpi_uncertainty = 0.15 * abs(mpi - base) / max(mpi, 1.0)
+            shear_uncertainty = 0.20 * (shear / 30.0) * (base / 100.0)
+            time_uncertainty = 0.10 * min(1.0, time_points[i] / 48.0)
+            ohc_uncertainty = 0.05 * max(0, 60 - ohc) / 60.0
+            
+            # Combined uncertainty (capped at max_uncertainty)
+            total_uncertainty = mpi_uncertainty + shear_uncertainty + time_uncertainty + ohc_uncertainty
+            total_uncertainty = min(total_uncertainty, self.max_uncertainty)
+            
+            # Apply uncertainty
+            upper_bound[i] = base * (1 + total_uncertainty)
+            lower_bound[i] = base * (1 - total_uncertainty)
+            
+            # Ensure physical bounds
+            lower_bound[i] = max(0.0, lower_bound[i])
+            upper_bound[i] = min(mpi, upper_bound[i])
+        
+        # Enhanced RI detection with multiple conditions
+        ri_periods = self._identify_enhanced_ri_periods(
+            intensity_forecast, time_points, mpi_trajectory, shear_trajectory
+        )
+        
+        # Calculate forecast metrics
+        peak_intensity = np.max(intensity_forecast)
+        peak_time = time_points[np.argmax(intensity_forecast)]
+        total_change = intensity_forecast[-1] - intensity_forecast[0]
+        
+        return {
+            'initial_intensity': float(intensity_forecast[0]),
+            'final_intensity': float(intensity_forecast[-1]),
+            'peak_intensity': float(peak_intensity),
+            'peak_time_hours': float(peak_time),
+            'intensity_change': float(total_change),
+            'average_intensification_rate': float(total_change / max(time_points[-1], 1.0)),
+            'ri_periods': ri_periods,
+            'confidence_intervals': {
+                'upper_bound_kt': upper_bound.tolist(),
+                'lower_bound_kt': lower_bound.tolist(),
+                'confidence_level': 0.68,  # 1-sigma
+                'uncertainty_sources': {
+                    'mpi_dependent': True,
+                    'shear_dependent': True,
+                    'time_dependent': True,
+                    'ohc_dependent': True
+                }
+            }
+        }
+
+    def _identify_enhanced_ri_periods(self, intensity_forecast: np.ndarray,
+                                     time_points: np.ndarray,
+                                     mpi_trajectory: np.ndarray,
+                                     shear_trajectory: np.ndarray) -> List[Dict]:
+        """
+        Enhanced RI detection with multiple conditions
+        """
+        ri_periods = []
+        window_size = int(24 / self.dt)
+        
+        for i in range(len(intensity_forecast) - window_size):
+            intensity_start = intensity_forecast[i]
+            intensity_end = intensity_forecast[i + window_size]
+            intensity_change = intensity_end - intensity_start
+            
+            # Condition 1: Intensity change threshold
+            if intensity_change < self.ri_threshold_kt:
+                continue
+            
+            # Condition 2: Shear threshold
+            avg_shear = np.mean(shear_trajectory[i:i+window_size])
+            if avg_shear >= self.ri_shear_threshold:
+                continue
+            
+            # Condition 3: MPI margin
+            mpi_margin = mpi_trajectory[i] - intensity_start
+            if mpi_margin < self.ri_mpi_margin_min:
+                continue
+            
+            # Condition 4: Not near peak
+            time_to_peak = time_points[np.argmax(intensity_forecast[i:])] - time_points[i]
+            if time_to_peak < 12:
+                continue
+            
+            # Calculate RI probability based on conditions
+            ri_confidence = self._calculate_ri_confidence(
+                intensity_change, avg_shear, mpi_margin
+            )
+            
+            ri_period = {
+                'start_hour': float(time_points[i]),
+                'end_hour': float(time_points[i + window_size]),
+                'intensity_change_kt': float(intensity_change),
+                'average_rate_kt_per_h': float(intensity_change / 24),
+                'average_shear_kt': float(avg_shear),
+                'mpi_margin_start_kt': float(mpi_margin),
+                'ri_category': self._categorize_enhanced_ri(intensity_change, avg_shear),
+                'ri_confidence': float(ri_confidence),
+                'conditions_met': {
+                    'intensity_change': True,
+                    'low_shear': avg_shear < self.ri_shear_threshold,
+                    'mpi_margin': mpi_margin >= self.ri_mpi_margin_min,
+                    'not_near_peak': time_to_peak >= 12
+                }
+            }
+            ri_periods.append(ri_period)
+        
+        return ri_periods
+
+    def _calculate_ri_confidence(self, intensity_change: float,
+                                avg_shear: float, mpi_margin: float) -> float:
+        """
+        Calculate RI confidence based on multiple factors
+        """
+        # Intensity change factor (0-1)
+        intensity_factor = min(1.0, intensity_change / 50.0)
+        
+        # Shear factor (inverse relationship)
+        shear_factor = np.exp(-0.1 * avg_shear)
+        
+        # MPI margin factor
+        mpi_factor = min(1.0, mpi_margin / 40.0)
+        
+        # Combined confidence
+        confidence = intensity_factor * shear_factor * mpi_factor
+        
+        return np.clip(confidence, 0.0, 0.95)
+
+    def _categorize_enhanced_ri(self, intensity_change: float,
+                               avg_shear: float) -> str:
+        """Categorize RI event based on intensity change and shear"""
+        if intensity_change >= 50 and avg_shear < 8:
+            return 'Extreme RI (Optimal Conditions)'
+        elif intensity_change >= 50:
+            return 'Extreme RI'
+        elif intensity_change >= 40 and avg_shear < 10:
+            return 'Rapid RI (Favorable Conditions)'
+        elif intensity_change >= 40:
+            return 'Rapid RI'
+        elif intensity_change >= 30 and avg_shear < 12:
+            return 'Moderate RI'
+        elif intensity_change >= 30:
+            return 'Marginal RI (Shear Limited)'
+        else:
+            return 'Not RI'
+
+    def _calculate_enhanced_ri_probability(self, intensity_forecast: np.ndarray,
+                                          time_points: np.ndarray,
+                                          mpi_trajectory: np.ndarray,
+                                          shear_trajectory: np.ndarray) -> List[Dict]:
+        """
+        Calculate RI probability time series with enhanced factors
+        """
+        ri_probabilities = []
+        window_size = int(24 / self.dt)
+        
+        for i in range(len(intensity_forecast)):
+            look_ahead_idx = min(len(intensity_forecast) - 1,
+                                i + window_size)
+            
+            if look_ahead_idx > i:
+                # Projected change
+                intensity_change = intensity_forecast[look_ahead_idx] - intensity_forecast[i]
+                
+                # Environmental conditions during period
+                avg_shear = np.mean(shear_trajectory[i:look_ahead_idx])
+                mpi_margin = mpi_trajectory[i] - intensity_forecast[i]
+                
+                # Current tendency
+                next_idx = min(len(intensity_forecast) - 1, i + 1)
+                current_rate = (intensity_forecast[next_idx] - intensity_forecast[i]) / self.dt
+                
+                # Calculate probability
+                ri_prob = self._calculate_ri_confidence(
+                    max(0, intensity_change), avg_shear, mpi_margin
+                )
+                
+                # Adjust based on current tendency
+                tendency_factor = 1.0 + 0.5 * np.tanh(current_rate / 5.0)
+                ri_prob *= tendency_factor
+                ri_prob = np.clip(ri_prob, 0.0, 0.95)
+                
+                ri_probabilities.append({
+                    'time_hour': float(time_points[i]),
+                    'ri_probability_24h': float(ri_prob),
+                    'current_intensification_rate': float(current_rate),
+                    'projected_24h_change': float(intensity_change),
+                    'mpi_margin_kt': float(mpi_margin),
+                    'avg_shear_24h': float(avg_shear),
+                    'tendency_factor': float(tendency_factor)
+                })
+        
+        return ri_probabilities
+
+    def _list_enhancements(self) -> List[str]:
+        """List all enhancements applied"""
+        return [
+            "Enhanced shear inhibition (V/MPI scaling)",
+            "Intensity-dependent cold wake feedback",
+            "Realistic relaxation near MPI (1-V/MPI factor)",
+            "Semi-implicit Euler integration for stability",
+            "Intensity-dependent soft rate limits (sigmoid)",
+            "Adaptive cold wake memory decay",
+            "Smoothed MPI trend effect (3-point difference)",
+            "Continuous symmetry suppression",
+            "Enhanced RI detection with multiple conditions",
+            "Linear extrapolation for short data",
+            "Shear- and time-dependent uncertainty",
+            "MPI margin requirement for RI",
+            "Physical bounds enforcement on all arrays",
+            "Memory effects for cumulative ocean feedback"
+        ]
+
+    def _get_fallback_forecast(self, initial_intensity: float,
+                              time_horizon: int) -> Dict[str, any]:
+        """Fallback forecast for error conditions"""
+        time_points = np.arange(0, time_horizon + self.dt, self.dt)
+        intensity = np.full_like(time_points, initial_intensity)
+        
+        return {
+            'time_points_hours': time_points.tolist(),
+            'intensity_forecast_kt': intensity.tolist(),
+            'ri_probability_time_series': [],
+            'forecast_summary': {
+                'initial_intensity': initial_intensity,
+                'final_intensity': initial_intensity,
+                'peak_intensity': initial_intensity,
+                'intensity_change': 0.0,
+                'error': True
+            },
+            'error': 'Forecast calculation failed'
+        }
+
+    def generate_operational_summary(self, forecast: Dict) -> str:
+        """Generate operational summary for briefing"""
+        summary = forecast.get('forecast_summary', {})
+        ri_periods = summary.get('ri_periods', [])
+        
+        lines = [
+            "=== ENHANCED INTENSITY FORECAST ===",
+            "",
+            f"INITIAL INTENSITY: {summary.get('initial_intensity', 0):.0f} kt",
+            f"PEAK FORECAST: {summary.get('peak_intensity', 0):.0f} kt "
+            f"at T+{summary.get('peak_time_hours', 0):.0f}h",
+            f"FINAL FORECAST: {summary.get('final_intensity', 0):.0f} kt",
+            f"TOTAL CHANGE: {summary.get('intensity_change', 0):+.0f} kt",
+            f"AVERAGE RATE: {summary.get('average_intensification_rate', 0):+.2f} kt/h",
+            ""
+        ]
+        
+        if ri_periods:
+            lines.append("RAPID INTENSIFICATION PERIODS:")
+            for ri in ri_periods:
+                lines.append(f"  • T+{ri['start_hour']:.0f}-{ri['end_hour']:.0f}h: "
+                           f"+{ri['intensity_change_kt']:.0f} kt ({ri['ri_category']})")
+                lines.append(f"    Shear: {ri['average_shear_kt']:.1f} kt, "
+                           f"Confidence: {ri['ri_confidence']:.0%}")
+        else:
+            lines.append("NO RAPID INTENSIFICATION FORECAST")
+        
+        lines.append("")
+        lines.append("FORECAST CONFIDENCE: Medium-High")
+        lines.append("KEY UNCERTAINTIES: Inner-core restructuring, Shear fluctuations")
+        lines.append("MODEL ENHANCEMENTS: Physics-based coupling, Memory effects, Enhanced RI detection")
+        
+        return "\n".join(lines)
+
+# Test the enhanced forecast
+if __name__ == "__main__":
+    print("=== ENHANCED TIME-STEPPING FORECAST TEST ===")
+    
+    forecaster = EnhancedTimeSteppingForecast(time_step_hours=1.0)
+    
+    # Test scenario
+    forecast = forecaster.forecast_intensity(
+        initial_intensity_kt=65.0,
+        mpi_trajectory=[120, 122, 124, 126, 128, 130, 132, 130, 128, 126] * 8,
+        environmental_trends={
+            'shear_kt': [10, 9, 8, 7, 6, 5, 4, 3, 2, 1] * 8,
+            'ohc_kj_cm2': [85] * 80,
+            'outflow_trend_c_per_h': [-0.3] * 80,
+            'symmetry': [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.82, 0.85, 0.87] * 8
+        },
+        time_horizon_hours=48
+    )
+    
+    print("\n" + forecaster.generate_operational_summary(forecast))
+    
+    # Show enhancements
+    print("\nENHANCEMENTS APPLIED:")
+    for i, enhancement in enumerate(forecast.get('enhancements_applied', [])[:5], 1):
+        print(f"  {i}. {enhancement}")
+    
+    if len(forecast.get('enhancements_applied', [])) > 5:
+        print(f"  ... and {len(forecast['enhancements_applied']) - 5} more")
