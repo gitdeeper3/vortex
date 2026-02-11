@@ -1,0 +1,70 @@
+# Atlantic Basin Configuration
+basin: "atlantic"
+full_name: "North Atlantic Basin"
+season_months: [6, 7, 8, 9, 10, 11]
+
+# Parameter thresholds
+thresholds:
+  ohc:
+    marginal: 50.0    # kJ/cm²
+    favorable: 80.0   # kJ/cm²
+  sst:
+    minimal: 26.0     # °C
+    favorable: 28.0   # °C
+  vws:
+    low: 5.0          # m/s (highly favorable)
+    moderate: 10.0    # m/s
+    high: 15.0        # m/s (RI inhibitor)
+  rh_mid:
+    dry: 50.0         # %
+    favorable: 60.0   # %
+    very_favorable: 70.0  # %
+  sigma_sym:
+    disorganized: 0.3
+    organized: 0.6
+
+# Weight coefficients
+weights:
+  initial_phase:
+    ohc: 0.15
+    sigma_sym: 0.10
+    vws: 0.20
+    rh_mid: 0.15
+    vorticity: 0.10
+    outflow: 0.10
+    conv_org: 0.10
+    int_trend: 0.10
+  
+  intensifying_phase:
+    ohc: 0.20
+    sigma_sym: 0.15
+    vws: 0.15
+    rh_mid: 0.15
+    vorticity: 0.10
+    outflow: 0.10
+    conv_org: 0.10
+    int_trend: 0.05
+  
+  mature_phase:
+    ohc: 0.15
+    sigma_sym: 0.20
+    vws: 0.10
+    rh_mid: 0.15
+    vorticity: 0.10
+    outflow: 0.15
+    conv_org: 0.10
+    int_trend: 0.05
+
+# Calibration coefficients
+calibration:
+  beta_0: -4.2
+  beta_1: 8.1
+  beta_2: -3.5
+  beta_3: 1.2
+
+# Operational settings
+operational:
+  ri_watch_threshold: 0.4
+  ri_warning_threshold: 0.6
+  ri_likely_threshold: 0.8
+  update_frequency: 3600  # seconds

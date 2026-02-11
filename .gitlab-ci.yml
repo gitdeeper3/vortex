@@ -1,0 +1,32 @@
+stages:
+  - validate
+  - test
+  - deploy
+
+validate-agent:
+  stage: validate
+  script:
+    - echo "Checking GitLab Agent configuration..."
+    - echo "Agent: gitdeeper3-k8s"
+    - echo "Project: gitdeeper3/vortex"
+  only:
+    - main
+
+test-deployment:
+  stage: test
+  script:
+    - echo "Simulating deployment..."
+    - echo "This would deploy to Kubernetes via GitLab Agent"
+    - echo "Agent needs to be connected first"
+  only:
+    - main
+    - merge_requests
+
+manual-deploy:
+  stage: deploy
+  script:
+    - echo "Manual deployment trigger"
+    - echo "Requires connected GitLab Agent"
+  when: manual
+  only:
+    - main

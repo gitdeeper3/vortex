@@ -1,0 +1,14 @@
+ci_access:
+  projects:
+    - id: gitdeeper3/vortex
+
+# Additional configurations
+observability:
+  logging:
+    level: info
+    format: json
+
+# Optional: Remote development
+remote_development:
+  enabled: true
+  dns_zone: "example.com"

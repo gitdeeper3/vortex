@@ -1,0 +1,143 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Data files (do not commit large data files)
+data/raw/
+data/processed/
+*.nc
+*.h5
+*.grib
+*.dat
+*.csv
+*.pkl
+*.npy
+
+# Notebooks
+.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Test outputs
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Project-specific
+config/local*.yaml
+config/secrets.yaml
+
+# تقارير Vortex (يمكن إضافة عينات يدوياً)
+reports/daily/*
+reports/weekly/*
+reports/monthly/*
+reports/archived/*
+
+# استثناء: احتفظ بمجلدات التقارير الفارغة
+!reports/daily/.gitkeep
+!reports/weekly/.gitkeep  
+!reports/monthly/.gitkeep
+!reports/archived/.gitkeep
+
+# ملفات نصية للتوثيق فقط
+!reports/sample-*.txt
+
+# مجلدات الاختبار المؤقتة
+tests/__pycache__/
+tests/*/__pycache__/
+
+# ملفات الاختبار المنقولة (النسخ الأصلية)
+*.py.backup
+*_backup.py
+*_original.py
+
+# ملفات الاختبار المؤقتة
+test_*.py
+debug_*.py
+*_test.py
+fixed_*.py
+robust_*.py
+simple_*.py
+full_*.py
+check_*.py
+inspect_*.py
+example_*.py
+مثال_*.py
+
+# مجلدات الاختبار المؤقتة
+tests/__pycache__/
+tests/*/__pycache__/
+
+# ملفات الاختبار المنقولة (النسخ الأصلية)
+*.py.backup
+*_backup.py
+*_original.py
+
+# ملفات الاختبار المؤقتة
+test_*.py
+debug_*.py
+*_test.py
+fixed_*.py
+robust_*.py
+simple_*.py
+full_*.py
+check_*.py
+inspect_*.py
+example_*.py
+مثال_*.py
+
+# تقارير Vortex (يمكن إضافة عينات يدوياً)
+reports/daily/*
+reports/weekly/*
+reports/monthly/*
+reports/archived/*
+
+# استثناء: احتفظ بمجلدات التقارير الفارغة
+!reports/daily/.gitkeep
+!reports/weekly/.gitkeep  
+!reports/monthly/.gitkeep
+!reports/archived/.gitkeep
+
+# ملفات نصية للتوثيق فقط
+!reports/sample-*.txt
