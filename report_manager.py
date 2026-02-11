@@ -120,3 +120,49 @@ if __name__ == "__main__":
     
     print(f"\n✅ Report generated successfully!")
     print(f"📄 Location: {report_path}")
+
+def run_complete_system():
+    """تشغيل نظام Vortex الكامل (من vortex_system.py)"""
+    print("🌪️ VORTEX SYSTEM - نظام التنبؤ بالأعاصير")
+    print("=" * 50)
+    
+    manager = VortexReportManager()
+    
+    # إنشاء تقارير للبحرات المختلفة
+    basins = ["Atlantic", "Pacific", "Indian"]
+    
+    for basin in basins:
+        print(f"\n📊 إنشاء تقرير لـ {basin}...")
+        report_path = manager.generate_forecast_report(basin)
+        print(f"   ✅ تم: {os.path.basename(report_path)}")
+    
+    # عرض التقارير المنشأة
+    print("\n📋 التقارير المنشأة:")
+    reports_dir = os.path.join(manager.reports_dir, "daily")
+    if os.path.exists(reports_dir):
+        reports = sorted(os.listdir(reports_dir))[-3:]
+        for report in reports:
+            print(f"   📄 {report}")
+    
+    print(f"\n🎯 تم إنشاء {len(basins)} تقارير بنجاح!")
+    print(f"📁 الموقع: {manager.reports_dir}")
+
+# تحديث main ليدعم أوضاع تشغيل مختلفة
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "--system":
+        # وضع النظام الكامل
+        run_complete_system()
+    elif len(sys.argv) > 1 and sys.argv[1] == "--help":
+        # مساعدة
+        print("استخدام Vortex Report Manager:")
+        print("  python report_manager.py           # تقرير واحد (Atlantic)")
+        print("  python report_manager.py --system  # النظام الكامل (3 تقارير)")
+        print("  python report_manager.py --help    # المساعدة")
+    else:
+        # الوضع الافتراضي: تقرير واحد
+        print("🚀 تشغيل Vortex Report Manager...")
+        manager = VortexReportManager()
+        report_path = manager.generate_forecast_report("Atlantic")
+        print(f"\n✅ تم إنشاء التقرير: {report_path}")
