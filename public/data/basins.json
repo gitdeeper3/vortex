@@ -1,0 +1,85 @@
+{
+  "last_update": "2026-02-11 15:00:00",
+  "basins": [
+    {
+      "name": "North Atlantic",
+      "code": "nat",
+      "ri": 66.5,
+      "risk": "HIGH",
+      "color": "#ff4444",
+      "intensity": 75,
+      "trend": "rising",
+      "type": "Hurricane"
+    },
+    {
+      "name": "Tropical Atlantic",
+      "code": "tat",
+      "ri": 55.0,
+      "risk": "HIGH",
+      "color": "#ff8844",
+      "intensity": 70,
+      "trend": "stable",
+      "type": "Hurricane"
+    },
+    {
+      "name": "Mediterranean",
+      "code": "med",
+      "ri": 32.0,
+      "risk": "MEDIUM",
+      "color": "#ffcc00",
+      "intensity": 45,
+      "trend": "rising",
+      "type": "Medicane"
+    },
+    {
+      "name": "East Pacific",
+      "code": "eas",
+      "ri": 62.0,
+      "risk": "HIGH",
+      "color": "#ff8844",
+      "intensity": 70,
+      "trend": "stable",
+      "type": "Hurricane"
+    },
+    {
+      "name": "West Pacific",
+      "code": "wes",
+      "ri": 78.0,
+      "risk": "CRITICAL",
+      "color": "#ff0000",
+      "intensity": 80,
+      "trend": "rising",
+      "type": "Typhoon"
+    },
+    {
+      "name": "Indian",
+      "code": "ind",
+      "ri": 50.0,
+      "risk": "HIGH",
+      "color": "#ff8844",
+      "intensity": 65,
+      "trend": "stable",
+      "type": "Cyclone"
+    },
+    {
+      "name": "South Indian",
+      "code": "sou",
+      "ri": 45.0,
+      "risk": "MEDIUM",
+      "color": "#ffcc00",
+      "intensity": 60,
+      "trend": "falling",
+      "type": "Cyclone"
+    },
+    {
+      "name": "South Pacific",
+      "code": "sop",
+      "ri": 48.0,
+      "risk": "MEDIUM",
+      "color": "#ffcc00",
+      "intensity": 62,
+      "trend": "stable",
+      "type": "Cyclone"
+    }
+  ]
+}
